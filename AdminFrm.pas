@@ -10,7 +10,8 @@ uses
   cxCheckBox, cxGridCustomTableView, cxGridTableView, cxGridDBTableView,
   cxGridLevel, cxClasses, cxGridCustomView, cxGrid, cxContainer, cxMaskEdit,
   cxDropDownEdit, cxLookupEdit, cxDBLookupEdit, cxDBLookupComboBox, Uni, MemDS,
-  DBAccess, UITypes, RTLConsts, cxNavigator, dxCoreClasses;
+  DBAccess, UITypes, RTLConsts, cxNavigator, dxCoreClasses, dxSkinsCore,
+  dxSkinsDefaultPainters, dxSkinscxPCPainter, System.ImageList;
 
 type
   TAdmin = class(TForm)

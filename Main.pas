@@ -12,7 +12,8 @@ uses
   cxGridTableView, cxGridDBTableView, cxGridLevel, cxClasses, cxGridCustomView,
   cxGrid, cxContainer, cxMaskEdit, cxDropDownEdit, cxLookupEdit, cxDBLookupEdit,
   cxDBLookupComboBox, cxLabel, cxDBLabel, LayoutPanel, Uni, SQLServerUniProvider,
-  cxNavigator, Winapi.ShellAPI, dxGDIPlusClasses;
+  cxNavigator, Winapi.ShellAPI, dxGDIPlusClasses, dxSkinsCore,
+  dxSkinsDefaultPainters, dxSkinscxPCPainter, System.ImageList;
 
 type
   TStarterFrm = class(TForm)
@@ -77,13 +78,15 @@ const
 var
   StarterFrm: TStarterFrm;
 
+  TEMP_DIR            : String;
+
 procedure SetLocalConfig(Field: String; FieldValue: String);
 function  GetLocalConfig(Field: String; Default: String = ''): String;
 
 
 implementation
 
-uses AdminFrm, SBaseFileUtils;
+uses AdminFrm, IOUtils;
 
 {$R *.dfm}
 
@@ -222,6 +225,64 @@ begin
   Close
 end;
 
+function GetTempPath: String;
+var
+  LFileName: String;
+begin
+  if not SysUtils.DirectoryExists(TEMP_DIR) then
+    SysUtils.ForceDirectories(TEMP_DIR);
+
+  repeat
+    Result := TEMP_DIR + #0;
+    SetLength(Result, MAX_PATH);
+    GetTempFileName(@Result[1], '#', 0, @Result[1]);
+    SetLength(Result, Pos(#0, Result) - 1);
+
+    LFileName := ChangeFileExt(Result, '');
+    TFile.Delete(Result);
+    Result := LFileName;
+    SysUtils.ForceDirectories(Result);
+  until SysUtils.DirectoryExists(Result);
+
+  Result := IncludeTrailingPathDelimiter(Result);
+end;
+
+function GetTempFile(AExtension: String = ''): String;
+var
+  LFileName: String;
+begin
+  if not SysUtils.DirectoryExists(TEMP_DIR) then
+    SysUtils.ForceDirectories(TEMP_DIR);
+
+  if (AExtension <> '') and (AExtension[1] <> '.') then
+    AExtension := '.' + AExtension;
+
+  repeat
+    Result := TEMP_DIR + #0;
+    SetLength(Result, MAX_PATH);
+    GetTempFileName(@Result[1], '~', 0, @Result[1]);
+    SetLength(Result, Pos(#0, Result) - 1);
+
+    if AExtension <> '' then begin
+      LFileName := ChangeFileExt(Result, AExtension);
+      RenameFile(Result, LFileName);
+      Result := LFileName;
+    end;
+  until FileExists(Result);
+end;
+
+procedure SaveTextFile(const AFileName: String; const AText: String; AEncoding: TEncoding);
+begin
+  if AEncoding = nil then
+    AEncoding := TEncoding.Default;
+
+  with TStringStream.Create(AText, AEncoding) do try
+    SaveToFile(AFileName)
+  finally
+    Free;
+  end;
+end;
+
 procedure TStarterFrm.btnOkClick(Sender: TObject);
 var
   LParam, Exe, Dir, Params: String;
@@ -274,22 +335,25 @@ begin
 
     SetLocalConfig('', qMenu.FieldByName('Id').AsString);
     SetLocalConfig(qMenu.FieldByName('Name').AsString, eUser.Text);
+    if lpRegimes.Visible then
+      SetLocalConfig(qMenu.FieldByName('Name').AsString + '##Regime##', lcbMode.EditValue);
 
     Dir := ExtractFilePath(Exe);
     if qMenu.FieldByName('RunFromLocalCopy').AsBoolean then begin
-      LocalDir := SBaseFileUtils.GetTempPath;
+      LocalDir := GetTempPath;
       LocalExe := IncludeTrailingPathDelimiter(LocalDir) + ExtractFileName(Exe);
       if not CopyFile(PChar(Exe), PChar(LocalExe), True) then
         Raise Exception.Create('Ошибка копирования файла "' + Exe + '" на локальную машину по адресу ..."' + LocalExe + '"');
       Exe := LocalExe;
-      LocalExe := SBaseFileUtils.GetTempFile('.cmd');
-      SBaseFileUtils.SaveTextFile
+      LocalExe := GetTempFile('.cmd');
+      SaveTextFile
       (
         LocalExe,
         'cd "' + Dir + '"'#13#10 +
         '"' + Exe + '" ' + params + #13#10 +
         'rmdir /S /Q "' + LocalDir + '"' + #13#10 +
-        'del "' + LocalExe + '"'
+        'del "' + LocalExe + '"',
+        nil
       );
       Exe := LocalExe;
       params := '';
@@ -354,20 +418,24 @@ begin
       if I1 = 0 then Break;
       I2 := PosEx( ':', Item, Succ(I1) );
       if I2 <> I1 + 2 then Break;
-      qRegimes.AppendRecord([
-                  Copy(Item, 1, Pred(I1))
-                , StrToInt(Copy(Item,Succ(I1),Pred(I2-I1)))
-                , Copy(Item,Succ(I2),Length(Item)-I2)
-                          ]);
+      qRegimes.AppendRecord
+      (
+        [
+          Copy(Item, 1, Pred(I1)),
+          StrToInt(Copy(Item, Succ(I1), Pred(I2-I1))),
+          Copy(Item, Succ(I2), Length(Item) - I2)
+        ]
+      );
     end;
 
     if not qRegimes.IsEmpty then begin
       qRegimes.First;
-      lcbMode.EditValue := qRegimesParam.AsString;
+      Item := GetLocalConfig(qMenu.FieldByName('Name').AsString + '##Regime##', '');
+      if Item.IsEmpty or not qRegimes.Locate('Param', Item, []) then
+        Item := qRegimesParam.AsString;
+      lcbMode.EditValue := Item;
       lpRegimes.Visible := True;
-    end
-    else
-//      ehMode.Text := '';
+    end else
       lpRegimes.Visible := False;
   except
   end;
@@ -393,5 +461,8 @@ procedure TStarterFrm.qMenuAfterOpen(DataSet: TDataSet);
 begin
   btnOk.Enabled := not qMenu.IsEmpty
 end;
+
+initialization
+  TEMP_DIR        := IOUtils.TPath.GetTempPath;
 
 end.
